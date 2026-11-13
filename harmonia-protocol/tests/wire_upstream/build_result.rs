@@ -29,3 +29,14 @@ test_upstream_wire!(
     BuildResult,
     realisation_with_path_features()
 );
+
+test_upstream_wire!(
+    build_result_resource_usage,
+    "build-result-resource-usage",
+    BuildResult,
+    {
+        let mut features = realisation_with_path_features();
+        features.insert(harmonia_protocol::version::FEATURE_BUILD_RESOURCE_USAGE.to_owned());
+        features
+    }
+);

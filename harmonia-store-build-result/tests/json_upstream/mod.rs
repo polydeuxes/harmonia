@@ -9,6 +9,55 @@ use harmonia_store_derivation::realisation::UnkeyedRealisation;
 use harmonia_utils_test::json_upstream::libstore_test_data_path;
 use harmonia_utils_test::test_upstream_json;
 
+#[test]
+fn resource_usage_json_success_and_failure() {
+    for failure in [false, true] {
+        let mut value = serde_json::json!({
+            "success": !failure,
+            "status": if failure { "PermanentFailure" } else { "Built" },
+            "timesBuilt": 1,
+            "startTime": 30,
+            "stopTime": 50
+        });
+        if !failure {
+            value["builtOutputs"] = serde_json::json!({});
+        }
+        let absent: BuildResult = serde_json::from_value(value.clone()).unwrap();
+        assert!(absent.resource_usage.is_empty());
+        assert!(
+            serde_json::to_value(&absent)
+                .unwrap()
+                .get("resourceUsage")
+                .is_none()
+        );
+
+        let statistics = serde_json::json!({
+            "memoryPeak": 1073741824u64,
+            "memorySwapPeak": 0,
+            "unknownFutureStatistic": u64::MAX
+        });
+        value["resourceUsage"] = statistics.clone();
+        let measured: BuildResult = serde_json::from_value(value.clone()).unwrap();
+        let encoded = serde_json::to_value(&measured).unwrap();
+        assert_eq!(encoded["resourceUsage"], statistics);
+        assert_eq!(
+            serde_json::from_value::<BuildResult>(encoded).unwrap(),
+            measured
+        );
+
+        value["resourceUsage"] = serde_json::json!({});
+        let empty: BuildResult = serde_json::from_value(value.clone()).unwrap();
+        assert!(
+            serde_json::to_value(empty)
+                .unwrap()
+                .get("resourceUsage")
+                .is_none()
+        );
+        value["resourceUsage"] = serde_json::json!({"memoryPeak": -1});
+        assert!(serde_json::from_value::<BuildResult>(value).is_err());
+    }
+}
+
 test_upstream_json!(
     test_build_result_success,
     libstore_test_data_path("build-result/success.json"),
@@ -40,6 +89,7 @@ test_upstream_json!(
             stop_time: 50,
             cpu_user: Some(Microseconds(500000000)),
             cpu_system: Some(Microseconds(604000000)),
+            resource_usage: Default::default(),
         }
     }
 );
@@ -59,6 +109,7 @@ test_upstream_json!(
             stop_time: 50,
             cpu_user: None,
             cpu_system: None,
+            resource_usage: Default::default(),
         }
     }
 );
@@ -78,6 +129,7 @@ test_upstream_json!(
             stop_time: 0,
             cpu_user: None,
             cpu_system: None,
+            resource_usage: Default::default(),
         }
     }
 );

@@ -41,8 +41,9 @@ pub mod version;
 pub use harmonia_store_path_info::NarHash;
 
 pub use version::{
-    BUILDER_RPC_V0_VERSION, FEATURE_ADD_TO_STORE_SCANNING, FEATURE_DISABLE_SET_OPTIONS,
-    FEATURE_REALISATION_WITH_PATH, FEATURE_SUBMIT_OUTPUT, Feature, FeatureSet, ProtocolVersion,
+    BUILDER_RPC_V0_VERSION, FEATURE_ADD_TO_STORE_SCANNING, FEATURE_BUILD_RESOURCE_USAGE,
+    FEATURE_DISABLE_SET_OPTIONS, FEATURE_REALISATION_WITH_PATH, FEATURE_SUBMIT_OUTPUT, Feature,
+    FeatureSet, ProtocolVersion,
     builder_rpc_v0_features, supported_features,
 };
 

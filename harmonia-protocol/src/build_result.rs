@@ -55,6 +55,11 @@ impl NixDeserializeTrait for BuildResult {
         let stop_time: i64 = reader.read_value().await?;
         let cpu_user: Option<Microseconds> = reader.read_value().await?;
         let cpu_system: Option<Microseconds> = reader.read_value().await?;
+        let resource_usage = if reader.has_feature(crate::version::FEATURE_BUILD_RESOURCE_USAGE) {
+            reader.read_value().await?
+        } else {
+            BTreeMap::new()
+        };
         let built_outputs: BTreeMap<OutputName, UnkeyedRealisation> =
             if reader.has_feature(crate::version::FEATURE_REALISATION_WITH_PATH) {
                 reader.read_value().await?
@@ -115,6 +120,7 @@ impl NixDeserializeTrait for BuildResult {
             stop_time,
             cpu_user,
             cpu_system,
+            resource_usage,
         }))
     }
 }
@@ -150,6 +156,9 @@ impl NixSerializeTrait for BuildResult {
         writer.write_value(&self.stop_time).await?;
         writer.write_value(&self.cpu_user).await?;
         writer.write_value(&self.cpu_system).await?;
+        if writer.has_feature(crate::version::FEATURE_BUILD_RESOURCE_USAGE) {
+            writer.write_value(&self.resource_usage).await?;
+        }
         if writer.has_feature(crate::version::FEATURE_REALISATION_WITH_PATH) {
             writer.write_value(built_outputs).await?;
         } else {
@@ -200,6 +209,7 @@ mod tests {
             stop_time: 50,
             cpu_user: Some(500.into()),
             cpu_system: Some(604.into()),
+            resource_usage: BTreeMap::new(),
         }
     }
 
@@ -217,6 +227,88 @@ mod tests {
             .set_features(features)
             .build_buffered(Cursor::new(buf));
         r.read_value().await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn resource_usage_success_and_failure_needs_feature() {
+        use crate::version::{FEATURE_BUILD_RESOURCE_USAGE, FEATURE_REALISATION_WITH_PATH};
+
+        for failure in [false, true] {
+            let mut v = sample_success();
+            if failure {
+                v.inner = BuildResultInner::Failure(BuildResultFailure {
+                    status: FailureStatus::PermanentFailure,
+                    error_msg: b"builder was killed".to_vec(),
+                    is_non_deterministic: false,
+                });
+            }
+            v.resource_usage = [
+                ("memoryPeak".to_owned(), 2147483648),
+                ("memorySwapPeak".to_owned(), 0),
+                ("unknownFutureStatistic".to_owned(), u64::MAX),
+            ]
+            .into();
+            for realisation_feature in [false, true] {
+                let mut features = crate::version::FeatureSet::new();
+                if realisation_feature {
+                    features.insert(FEATURE_REALISATION_WITH_PATH.to_owned());
+                }
+                let mut absent = v.clone();
+                absent.resource_usage.clear();
+                // No negotiated resource feature: identical legacy bytes, absent statistics.
+                let legacy = write(features.clone(), &v).await;
+                assert_eq!(legacy, write(features.clone(), &absent).await);
+                assert_eq!(read(features.clone(), legacy).await, absent);
+
+                features.insert(FEATURE_BUILD_RESOURCE_USAGE.to_owned());
+                assert_eq!(
+                    read(features.clone(), write(features.clone(), &v).await).await,
+                    v
+                );
+                assert_eq!(
+                    read(features.clone(), write(features, &absent).await).await,
+                    absent
+                );
+            }
+        }
+        assert!(crate::version::supported_features().contains(FEATURE_BUILD_RESOURCE_USAGE));
+        assert!(!crate::version::builder_rpc_v0_features().contains(FEATURE_BUILD_RESOURCE_USAGE));
+    }
+
+    #[tokio::test]
+    async fn resource_usage_native_field_order() {
+        let mut v = sample_success();
+        v.resource_usage = [("memoryPeak".to_owned(), 1073741824)].into();
+        let features = crate::version::supported_features();
+        let buf = write(features.clone(), &v).await;
+        let mut r = NixReader::builder()
+            .set_features(features)
+            .build_buffered(Cursor::new(buf));
+        assert_eq!(r.read_value::<u16>().await.unwrap(), 0);
+        assert!(r.read_value::<Bytes>().await.unwrap().is_empty());
+        assert_eq!(r.read_value::<u32>().await.unwrap(), v.times_built);
+        assert!(!r.read_value::<bool>().await.unwrap());
+        assert_eq!(r.read_value::<i64>().await.unwrap(), v.start_time);
+        assert_eq!(r.read_value::<i64>().await.unwrap(), v.stop_time);
+        assert_eq!(
+            r.read_value::<Option<Microseconds>>().await.unwrap(),
+            v.cpu_user
+        );
+        assert_eq!(
+            r.read_value::<Option<Microseconds>>().await.unwrap(),
+            v.cpu_system
+        );
+        assert_eq!(
+            r.read_value::<BTreeMap<String, u64>>().await.unwrap(),
+            v.resource_usage
+        );
+        assert_eq!(
+            r.read_value::<BTreeMap<OutputName, UnkeyedRealisation>>()
+                .await
+                .unwrap(),
+            v.success().unwrap().built_outputs
+        );
+        assert!(r.read_value::<u64>().await.is_err());
     }
 
     /// Without the feature, the writer emits the legacy StringMap form

@@ -30,6 +30,9 @@ pub type FeatureSet = BTreeSet<Feature>;
 /// instead of the legacy `sha256:<hex>!out` JSON-string format.
 pub const FEATURE_REALISATION_WITH_PATH: &str = "realisation-with-path-not-hash";
 
+/// Carries the native string-to-unsigned build resource statistics map.
+pub const FEATURE_BUILD_RESOURCE_USAGE: &str = "build-resource-usage";
+
 /// Enables the `AddToStoreScanning` operation.
 ///
 /// Upstream daemons only advertise this on recursive-nix connections, so it is
@@ -49,7 +52,11 @@ pub const FEATURE_DISABLE_SET_OPTIONS: &str = "disable-set-options";
 
 /// Features harmonia advertises during handshake.
 pub fn supported_features() -> FeatureSet {
-    [FEATURE_REALISATION_WITH_PATH.to_owned()].into()
+    [
+        FEATURE_REALISATION_WITH_PATH.to_owned(),
+        FEATURE_BUILD_RESOURCE_USAGE.to_owned(),
+    ]
+    .into()
 }
 
 /// The protocol version of the pinned `builder-rpc-v0` derivation feature.

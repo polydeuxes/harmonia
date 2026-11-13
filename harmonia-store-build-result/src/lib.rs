@@ -153,6 +153,9 @@ pub struct BuildResult {
     /// System CPU time the build took.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_system: Option<Microseconds>,
+    /// Native build statistics; unknown names are preserved.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub resource_usage: BTreeMap<String, u64>,
 }
 
 impl BuildResult {
@@ -351,9 +354,18 @@ mod arbitrary {
                 any::<i64>(),
                 any::<Option<Microseconds>>(),
                 any::<Option<Microseconds>>(),
+                proptest::collection::btree_map(any::<String>(), any::<u64>(), 0..4),
             )
                 .prop_map(
-                    |(inner, times_built, start_time, stop_time, cpu_user, cpu_system)| {
+                    |(
+                        inner,
+                        times_built,
+                        start_time,
+                        stop_time,
+                        cpu_user,
+                        cpu_system,
+                        resource_usage,
+                    )| {
                         BuildResult {
                             inner,
                             times_built,
@@ -361,6 +373,7 @@ mod arbitrary {
                             stop_time,
                             cpu_user,
                             cpu_system,
+                            resource_usage,
                         }
                     },
                 )
